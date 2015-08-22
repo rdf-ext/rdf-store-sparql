@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/nicola/rdf-store-sparql.git"
+    "url": "https://github.com/rdf-ext/rdf-store-sparql.git"
   },
   "keywords": [
     "rdf-stores",
@@ -19,7 +19,7 @@
   "author": "Nicola Greco <me@nicola.io> (http://nicolagreco.com/)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/nicola/rdf-store-sparql/issues"
+    "url": "https://github.com/rdf-ext/rdf-store-sparql/issues"
   },
-  "homepage": "https://github.com/nicola/rdf-store-sparql"
+  "homepage": "https://github.com/rdf-ext/rdf-store-sparql"
 }
