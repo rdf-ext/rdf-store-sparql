@@ -40,88 +40,129 @@ var SparqlStore = function (rdf, options) {
     return match;
   };
 
+  self.executeQuery = function (queryString, callback, queryParams, requestOptions) {
+    queryParams = queryParams || {parse: true};
+    requestOptions = requestOptions || {};
+
+    var queryUrl = self.endpointUrl + '?query=' + encodeURIComponent(queryString);
+    var reqHeaders = { 'Accept': self.mimeType };
+
+    self.request('GET', queryUrl, reqHeaders, null, function (statusCode, resHeaders, resContent, error) {
+      // error during request
+      if (error) {
+        return callback('request error: ' + error);
+      }
+
+      // http status code != success
+      if (!httpSuccess(statusCode)) {
+        return callback('status code error: ' + statusCode);
+      }
+
+      if (statusCode === 200 && queryParams.parse) {
+        self.parse(resContent, callback);
+      } else {
+        callback();
+      }
+    });
+  };
+
+  self.executeUpdateQuery = function (queryString, callback, queryParams, requestOptions) {
+    queryParams = queryParams || {parse: true};
+    requestOptions = requestOptions || {};
+
+    var reqHeaders = { 'Content-Type': 'application/sparql-update' };
+
+    self.request('POST', self.updateUrl, reqHeaders, queryString, function (statusCode, resHeaders, resContent, error) {
+      // error during request
+      if (error) {
+        return callback('request error: ' + error);
+      }
+
+      // http status code != success
+      if (!httpSuccess(statusCode)) {
+        return callback('status code error: ' + statusCode);
+      }
+
+      if (statusCode === 200 && queryParams.parse) {
+        self.parse(resContent, callback);
+      } else {
+        callback();
+      }
+    });
+  };
+
   self.graph = function (graphIri, callback) {
     self.match(graphIri, null, null, null, callback);
   };
 
   self.match = function (graphIri, subject, predicate, object, callback, limit) {
-    var
-      filter = buildMatch(subject, predicate, object),
-      query = 'CONSTRUCT { ' + filter + ' } { GRAPH <' + graphIri + '> {' + filter + ' }}',
-      url = self.endpointUrl + '?query=' + encodeURIComponent(query);
+    var filter = buildMatch(subject, predicate, object);
+    var query = 'CONSTRUCT { ' + filter + ' } { GRAPH <' + graphIri + '> {' + filter + ' }}'; // TODO: use limit parameters
 
-    self.request('GET', url, { 'Accept': self.mimeType }, null,
-      function (statusCode, headers, resContent, error) {
-        // error during request
-        if (error) {
-          return callback(null, 'request error: ' + error);
-        }
-
-        // http status code != success
-        if (!httpSuccess(statusCode)) {
-          return callback(null, 'status code error: ' + statusCode);
-        }
-
-        // TODO: use limit parameters
-        self.parse(resContent, callback);
-      }
-    );
-  };
-
-  var updateRequest = function (content, callbackValue, callback) {
-    self.request('POST', self.updateUrl, { 'Content-Type': 'application/sparql-update' }, content,
-      function (statusCode, headers, resContent, error) {
-        // error during request
-        if (error) {
-          return callback(null, 'request error: ' + error);
-        }
-
-        // http status code != success
-        if (!httpSuccess(statusCode)) {
-          return callback(null, 'status code error: ' + statusCode);
-        }
-
-        callback(callbackValue);
-      }
-    );
+    self.executeQuery(query, callback);
   };
 
   self.add = function (graphIri, graph, callback) {
-    var content =
-      'DROP SILENT GRAPH <' + graphIri + '>;' +
-      'INSERT DATA { GRAPH <' + graphIri + '> { ' + self.serialize(graph) + ' } }';
+    self.serialize(graph, function (error, data) {
+      if (error) {
+        callback(error)
+      } else {
+        var query = '' +
+          'DROP SILENT GRAPH <' + graphIri + '>;' +
+          'INSERT DATA { GRAPH <' + graphIri + '> { ' + data + ' } }';
 
-    updateRequest(content, graph, callback);
+        self.executeUpdateQuery(query, function (error) {
+          if (error) {
+            callback(error);
+          } else {
+            callback(null, graph);
+          }
+        });
+      }
+    });
   };
 
   self.merge = function (graphIri, graph, callback) {
-    var content =
-      'INSERT DATA { GRAPH <' + graphIri + '> { ' + self.serialize(graph) + ' } }';
+    self.serialize(graph, function (error, data) {
+      if (error) {
+        callback(error)
+      } else {
+        var query = 'INSERT DATA { GRAPH <' + graphIri + '> { ' + data +' } }';
 
-    updateRequest(content, graph, callback);
+        self.executeUpdateQuery(query, function (error) {
+          if (error) {
+            callback(error);
+          } else {
+            callback(null, graph);
+          }
+        });
+      }
+    });
   };
 
   self.remove = function (graphIri, graph, callback) {
-    var content =
-      'DELETE DATA FROM <' + graphIri + '> { ' + self.serialize(graph) + ' }';
+    self.serialize(graph, function (error, data) {
+      if (error) {
+        callback(error)
+      } else {
+        var query = 'DELETE DATA FROM <' + graphIri + '> { ' + data + ' }';
 
-    updateRequest(content, true, callback);
+        self.executeUpdateQuery(query, callback);
+      }
+    });
   };
 
   self.removeMatches = function (graphIri, subject, predicate, object, callback) {
-    var content =
-      'DELETE FROM GRAPH <' + graphIri + '> WHERE { ' +
-      buildMatch(subject, predicate, object) + ' }';
+    var query = 'DELETE FROM GRAPH <' + graphIri + '> WHERE { ' + buildMatch(subject, predicate, object) + ' }';
 
-    updateRequest(content, true, callback);
+    self.executeUpdateQuery(query, callback);
   };
 
   self.delete = function (graphIri, callback) {
-    var content = 'CLEAR  GRAPH <' + graphIri + '>';
+    var query = 'CLEAR  GRAPH <' + graphIri + '>';
 
-    updateRequest(content, true, callback);
+    self.executeUpdateQuery(query, callback);
   };
 };
-
 
 module.exports = SparqlStore
