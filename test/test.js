@@ -1,5 +1,5 @@
 var assert = require('assert')
-var rdf = require('rdf-ext')()
+var rdf = require('rdf-ext')
 var url = require('url')
 var SparqlStore = require('../').bind(null, rdf)
 
