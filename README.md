@@ -1,6 +1,6 @@
 # rdf-store-sparql
 
-SPARQL RDF Store that follows the [RDF Interface](http://bergos.github.io/rdf-ext-spec/) specification. Store implementation to access graphs via [SPARQL 1.1 Graph Store HTTP Protocol](http://www.w3.org/TR/sparql11-http-rdf-update/) interface. This requires an external triple store.
+SPARQL RDF Store that follows the [RDF Interface](http://bergos.github.io/rdf-ext-spec/) specification. Store implementation to access graphs using the [SPARQL 1.1 Protocol](http://www.w3.org/TR/sparql11-protocol/). This requires an external triple store.
 
 ## Install
 
