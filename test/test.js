@@ -1,3 +1,4 @@
+/* global describe, it */
 var assert = require('assert')
 var rdf = require('rdf-ext')
 var url = require('url')
@@ -39,7 +40,7 @@ var createParse = function (buildGraphData) {
 
     graphData = graphData || {graph: rdf.createGraph()}
 
-    callback(graphData.error, graphData.graph);
+    callback(graphData.error, graphData.graph)
   }
 }
 
@@ -127,6 +128,7 @@ describe('SPARQL Store', function () {
       var store = new SparqlStore(options)
 
       store.executeQuery('SELECT * {?s ?p ?o}', function (error, graph) {
+        assert.equal(error, null)
         assert.equal(graph, 'test1')
 
         done()
@@ -253,6 +255,7 @@ describe('SPARQL Store', function () {
       var store = new SparqlStore(options)
 
       store.executeUpdateQuery('INSERT DATA { <http://example/subject> <http://example/predicate> "".}', function (error, graph) {
+        assert.equal(error, null)
         assert.equal(graph, 'test1')
 
         done()
