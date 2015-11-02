@@ -21,5 +21,8 @@
   "bugs": {
     "url": "https://github.com/rdf-ext/rdf-store-sparql/issues"
   },
-  "homepage": "https://github.com/rdf-ext/rdf-store-sparql"
+  "homepage": "https://github.com/rdf-ext/rdf-store-sparql",
+  "devDependencies": {
+    "nock": "^2.17.0"
+  }
 }

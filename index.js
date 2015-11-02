@@ -155,7 +155,7 @@ var SparqlStore = function (rdf, options) {
   }
 
   self.delete = function (graphIri, callback) {
-    var query = 'CLEAR  GRAPH <' + graphIri + '>'
+    var query = 'CLEAR GRAPH <' + graphIri + '>'
 
     self.executeUpdateQuery(query, callback)
   }
