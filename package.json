@@ -1,10 +1,11 @@
 {
   "name": "rdf-store-sparql",
-  "version": "0.1.2",
+  "version": "0.3.0-rc1",
   "description": "SPARQL RDF Store that follows the RDF Interface specification",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "standard",
+    "test": "node_modules/.bin/mocha"
   },
   "repository": {
     "type": "git",
@@ -16,13 +17,21 @@
     "linked",
     "data"
   ],
-  "author": "Nicola Greco <me@nicola.io> (http://nicolagreco.com/)",
+  "author": "Thomas Bergwinkl <bergi@axolotlfarm.org> (https://www.bergnet.org/people/bergi/card#me)",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/rdf-ext/rdf-store-sparql/issues"
   },
   "homepage": "https://github.com/rdf-ext/rdf-store-sparql",
+  "dependencies": {
+    "rdf-ext": "^0.3.0-rc1",
+    "rdf-parser-n3": "^0.3.0-rc1",
+    "rdf-serializer-ntriples": "^0.3.0-rc1",
+    "rdf-store-abstract": "^0.3.0-rc1",
+    "sparql-http-client": "^0.1.0"
+  },
   "devDependencies": {
+    "mocha": "^2.3.3",
     "nock": "^2.17.0"
   }
 }

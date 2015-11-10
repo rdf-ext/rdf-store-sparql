@@ -1,164 +1,195 @@
-var SparqlStore = function (rdf, options) {
-  var self = this
+var util = require('util')
+var N3Parser = require('rdf-parser-n3')
+var NTriplesSerializer = require('rdf-serializer-ntriples')
+var AbstractStore = require('rdf-store-abstract')
+var SparqlHttpClient = require('sparql-http-client')
 
-  options = options || {}
+function buildMatch (subject, predicate, object) {
+  var match = ''
 
-  self.endpointUrl = options.endpointUrl
-  self.updateUrl = options.updateUrl || self.endpointUrl
-  self.mimeType = options.mimeType || 'text/turtle'
-  self.serialize = options.serialize || rdf.serializeNTriples
-  self.parse = options.parse || rdf.parseTurtle
-  self.request = options.request || rdf.defaultRequest
-
-  var httpSuccess = function (statusCode) {
-    return (statusCode >= 200 && statusCode < 300)
-  }
-
-  var buildMatch = function (subject, predicate, object) {
-    var match = ''
-
-    var nodeToNT = function (node) {
-      if (typeof node === 'string') {
-        if (node.substr(0, 2) === '_:') {
-          return node
-        } else {
-          return '<' + node + '>'
-        }
+  var nodeToNT = function (node) {
+    if (typeof node === 'string') {
+      if (node.substr(0, 2) === '_:') {
+        return node
+      } else {
+        return '<' + node + '>'
       }
-
-      return node.toNT()
     }
 
-    match += subject ? nodeToNT(subject) : '?s'
-    match += predicate ? ' ' + nodeToNT(predicate) : ' ?p'
-    match += object ? ' ' + nodeToNT(object) : ' ?o'
-
-    return match
+    return node.toNT()
   }
 
-  self.executeQuery = function (queryString, callback, queryParams, requestOptions) {
-    queryParams = queryParams || {parse: true}
-    requestOptions = requestOptions || {}
+  match += subject ? nodeToNT(subject) : '?s'
+  match += predicate ? nodeToNT(predicate) : '?p'
+  match += object ? nodeToNT(object) : '?o'
 
-    var queryUrl = self.endpointUrl + '?query=' + encodeURIComponent(queryString)
-    var reqHeaders = { 'Accept': self.mimeType }
+  return match
+}
 
-    self.request('GET', queryUrl, reqHeaders, null, function (statusCode, resHeaders, resContent, error) {
-      // error during request
-      if (error) {
-        return callback('request error: ' + error)
-      }
+function checkStatusCode (result) {
+  if (result.statusCode < 200 || result.statusCode >= 300) {
+    var error = new Error('status code: ' + result.statusCode)
 
-      // http status code != success
-      if (!httpSuccess(statusCode)) {
-        return callback('status code error: ' + statusCode)
-      }
+    error.statusCode = result.statusCode
 
-      if (statusCode === 200 && queryParams.parse) {
-        self.parse(resContent, callback)
-      } else {
-        callback()
-      }
+    throw error
+  }
+}
+
+function combinedCallback (resolve, reject, callback) {
+  callback = callback || function () {}
+
+  return function (error, result) {
+    if (!error) {
+      callback(null, result)
+      resolve(result)
+    } else {
+      callback(error)
+      reject(error)
+    }
+  }
+}
+
+function SparqlStore (options) {
+  if (!options || !options.endpointUrl) {
+    throw new Error('SparqlStore requires at least an endpointUrl')
+  }
+
+  this.rdf = options.rdf || require('rdf-ext')
+  this.serialize = options.serialize || NTriplesSerializer.serialize.bind(NTriplesSerializer)
+  this.parse = options.parse || N3Parser.parse.bind(N3Parser)
+  this.client = new SparqlHttpClient({
+    endpointUrl: options.endpointUrl,
+    updateUrl: options.updateUrl || options.endpointUrl,
+    request: options.request || this.rdf.defaultRequest
+  })
+
+  this.client.types.construct.accept = options.mimeType || 'application/n-triples'
+
+  AbstractStore.call(this)
+}
+
+util.inherits(SparqlStore, AbstractStore)
+
+SparqlStore.prototype.add = function (graphIri, graph, callback) {
+  var self = this
+
+  return new Promise(function (resolve, reject) {
+    callback = combinedCallback(resolve, reject, callback)
+
+    self.serialize(graph).then(function (serialized) {
+      var query = 'DROP SILENT GRAPH<' + graphIri + '>;INSERT DATA{GRAPH<' + graphIri + '>{' + serialized + '}}'
+
+      return self.client.updateQuery(query)
+    }).then(function (result) {
+      checkStatusCode(result)
+
+      callback(null, graph)
+    }).catch(function (error) {
+      callback(error)
     })
-  }
+  })
+}
 
-  self.executeUpdateQuery = function (queryString, callback, queryParams, requestOptions) {
-    queryParams = queryParams || {parse: true}
-    requestOptions = requestOptions || {}
+SparqlStore.prototype.delete = function (graphIri, callback) {
+  var self = this
 
-    var reqHeaders = { 'Content-Type': 'application/sparql-update' }
+  return new Promise(function (resolve, reject) {
+    callback = combinedCallback(resolve, reject, callback)
 
-    self.request('POST', self.updateUrl, reqHeaders, queryString, function (statusCode, resHeaders, resContent, error) {
-      // error during request
-      if (error) {
-        return callback('request error: ' + error)
-      }
+    var query = 'CLEAR GRAPH<' + graphIri + '>'
 
-      // http status code != success
-      if (!httpSuccess(statusCode)) {
-        return callback('status code error: ' + statusCode)
-      }
+    self.client.updateQuery(query).then(function (result) {
+      checkStatusCode(result)
 
-      if (statusCode === 200 && queryParams.parse) {
-        self.parse(resContent, callback)
-      } else {
-        callback()
-      }
+      callback()
+    }).catch(function (error) {
+      callback(error)
     })
-  }
+  })
+}
 
-  self.graph = function (graphIri, callback) {
-    self.match(graphIri, null, null, null, callback)
-  }
+SparqlStore.prototype.graph = function (iri, callback) {
+  return this.match(null, null, null, iri, callback)
+}
 
-  self.match = function (graphIri, subject, predicate, object, callback, limit) {
+SparqlStore.prototype.match = function (subject, predicate, object, iri, callback, limit) {
+  var self = this
+
+  return new Promise(function (resolve, reject) {
+    callback = combinedCallback(resolve, reject, callback)
+
     var filter = buildMatch(subject, predicate, object)
-    var query = 'CONSTRUCT { ' + filter + ' } { GRAPH <' + graphIri + '> {' + filter + ' }}'
+    var query = 'CONSTRUCT{' + filter + '}{GRAPH<' + iri + '>{' + filter + '}}'
 
-    self.executeQuery(query, callback)
-  }
+    self.client.constructQuery(query).then(function (result) {
+      checkStatusCode(result)
 
-  self.add = function (graphIri, graph, callback) {
-    self.serialize(graph, function (error, data) {
-      if (error) {
-        callback(error)
-      } else {
-        var query = '' +
-          'DROP SILENT GRAPH <' + graphIri + '>;' +
-          'INSERT DATA { GRAPH <' + graphIri + '> { ' + data + ' } }'
-
-        self.executeUpdateQuery(query, function (error) {
-          if (error) {
-            callback(error)
-          } else {
-            callback(null, graph)
-          }
-        })
-      }
+      return self.parse(result.content)
+    }).then(function (graph) {
+      callback(null, graph)
+    }).catch(function (error) {
+      callback(error)
     })
-  }
+  })
+}
 
-  self.merge = function (graphIri, graph, callback) {
-    self.serialize(graph, function (error, data) {
-      if (error) {
-        callback(error)
-      } else {
-        var query = 'INSERT DATA { GRAPH <' + graphIri + '> { ' + data + ' } }'
+SparqlStore.prototype.merge = function (graphIri, graph, callback) {
+  var self = this
 
-        self.executeUpdateQuery(query, function (error) {
-          if (error) {
-            callback(error)
-          } else {
-            callback(null, graph)
-          }
-        })
-      }
+  return new Promise(function (resolve, reject) {
+    callback = combinedCallback(resolve, reject, callback)
+
+    self.serialize(graph).then(function (serialized) {
+      var query = 'INSERT DATA{GRAPH<' + graphIri + '>{' + serialized + '}}'
+
+      return self.client.updateQuery(query)
+    }).then(function (result) {
+      checkStatusCode(result)
+
+      callback(null, graph)
+    }).catch(function (error) {
+      callback(error)
     })
-  }
+  })
+}
 
-  self.remove = function (graphIri, graph, callback) {
-    self.serialize(graph, function (error, data) {
-      if (error) {
-        callback(error)
-      } else {
-        var query = 'DELETE DATA FROM <' + graphIri + '> { ' + data + ' }'
+SparqlStore.prototype.remove = function (graphIri, graph, callback) {
+  var self = this
 
-        self.executeUpdateQuery(query, callback)
-      }
+  return new Promise(function (resolve, reject) {
+    callback = combinedCallback(resolve, reject, callback)
+
+    self.serialize(graph).then(function (serialized) {
+      var query = 'DELETE DATA FROM<' + graphIri + '>{' + serialized + '}'
+
+      return self.client.updateQuery(query)
+    }).then(function (result) {
+      checkStatusCode(result)
+
+      callback()
+    }).catch(function (error) {
+      callback(error)
     })
-  }
+  })
+}
 
-  self.removeMatches = function (graphIri, subject, predicate, object, callback) {
-    var query = 'DELETE FROM GRAPH <' + graphIri + '> WHERE { ' + buildMatch(subject, predicate, object) + ' }'
+SparqlStore.prototype.removeMatches = function (subject, predicate, object, iri, callback) {
+  var self = this
 
-    self.executeUpdateQuery(query, callback)
-  }
+  return new Promise(function (resolve, reject) {
+    callback = combinedCallback(resolve, reject, callback)
 
-  self.delete = function (graphIri, callback) {
-    var query = 'CLEAR GRAPH <' + graphIri + '>'
+    var query = 'DELETE FROM GRAPH<' + iri + '>WHERE{' + buildMatch(subject, predicate, object) + '}'
 
-    self.executeUpdateQuery(query, callback)
-  }
+    self.client.updateQuery(query).then(function (result) {
+      checkStatusCode(result)
+
+      callback()
+    }).catch(function (error) {
+      callback(error)
+    })
+  })
 }
 
 module.exports = SparqlStore
