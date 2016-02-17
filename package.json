@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/rdf-ext/rdf-store-sparql",
   "dependencies": {
+    "inherits": "^2.0.1",
     "rdf-ext": "^0.3.0",
     "rdf-parser-n3": "^0.3.0",
     "rdf-serializer-ntriples": "^0.3.0",
