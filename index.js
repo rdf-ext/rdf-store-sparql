@@ -1,4 +1,4 @@
-var util = require('util')
+var inherits = require('inherits')
 var N3Parser = require('rdf-parser-n3')
 var NTriplesSerializer = require('rdf-serializer-ntriples')
 var AbstractStore = require('rdf-store-abstract')
@@ -69,7 +69,7 @@ function SparqlStore (options) {
   AbstractStore.call(this)
 }
 
-util.inherits(SparqlStore, AbstractStore)
+inherits(SparqlStore, AbstractStore)
 
 SparqlStore.prototype.add = function (graphIri, graph, callback) {
   var self = this
