@@ -29,7 +29,7 @@
     "rdf-parser-n3": "^0.3.0",
     "rdf-serializer-ntriples": "^0.3.0",
     "rdf-store-abstract": "^0.3.0",
-    "sparql-http-client": "^0.1.0"
+    "sparql-http-client": "^1.0.1"
   },
   "devDependencies": {
     "mocha": "^2.3.3",

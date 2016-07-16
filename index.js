@@ -58,10 +58,16 @@ function SparqlStore (options) {
   this.rdf = options.rdf || require('rdf-ext')
   this.serialize = options.serialize || NTriplesSerializer.serialize.bind(NTriplesSerializer)
   this.parse = options.parse || N3Parser.parse.bind(N3Parser)
+
+  var defaultRequest = this.rdf.defaultRequest
+
   this.client = new SparqlHttpClient({
     endpointUrl: options.endpointUrl,
     updateUrl: options.updateUrl || options.endpointUrl,
-    request: options.request || this.rdf.defaultRequest
+    fetch: options.request || function (url, options) {
+      options.url = url
+      return defaultRequest(options)
+    }
   })
 
   this.client.types.construct.accept = options.mimeType || 'application/n-triples'
