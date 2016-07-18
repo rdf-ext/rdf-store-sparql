@@ -48,7 +48,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -90,7 +90,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -129,7 +129,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -170,7 +170,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -350,7 +350,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -392,7 +392,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -431,7 +431,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -472,7 +472,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -510,7 +510,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
@@ -551,7 +551,7 @@ describe('rdf-store-sparql', function () {
       nock('http://example.org')
         .post('/update')
         .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(6))
+          sentData = decodeURIComponent(body.slice(7))
         })
 
       var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
