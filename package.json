@@ -1,11 +1,11 @@
 {
   "name": "rdf-store-sparql",
-  "version": "0.3.1",
+  "version": "0.9.0",
   "description": "SPARQL RDF Store that follows the RDF Interface specification",
   "main": "index.js",
   "scripts": {
     "lint": "standard",
-    "test": "node_modules/.bin/mocha"
+    "test": "npm run lint && mocha"
   },
   "repository": {
     "type": "git",
@@ -24,15 +24,16 @@
   },
   "homepage": "https://github.com/rdf-ext/rdf-store-sparql",
   "dependencies": {
-    "inherits": "^2.0.1",
-    "rdf-ext": "^0.3.0",
-    "rdf-parser-n3": "^0.3.0",
-    "rdf-serializer-ntriples": "^0.3.0",
-    "rdf-store-abstract": "^0.3.0",
-    "sparql-http-client": "^1.0.1"
+    "nodeify-fetch": "^0.2.0",
+    "rdf-ext": "git://github.com/rdf-ext/rdf-ext.git#develop",
+    "rdf-parser-n3": "git://github.com/rdf-ext/rdf-parser-n3.git#develop",
+    "rdf-serializer-ntriples": "git://github.com/rdf-ext/rdf-serializer-ntriples.git#develop",
+    "readable-stream": "^2.2.5",
+    "sparql-http-client": "^1.0.2"
   },
   "devDependencies": {
-    "mocha": "^2.3.3",
-    "nock": "^2.17.0"
+    "mocha": "^3.2.0",
+    "nock": "^9.0.9",
+    "standard": "^9.0.1"
   }
 }

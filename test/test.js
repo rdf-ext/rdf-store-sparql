@@ -1,581 +1,392 @@
 /* global describe, it */
-var assert = require('assert')
-var nock = require('nock')
-var rdf = require('rdf-ext')
-var SparqlStore = require('../')
 
-describe('rdf-store-sparql', function () {
-  var simpleGraph = rdf.createGraph([
-    rdf.createTriple(
-      rdf.createNamedNode('http://example.org/subject'),
-      rdf.createNamedNode('http://example.org/predicate'),
-      rdf.createLiteral('object'))
+const assert = require('assert')
+const nock = require('nock')
+const rdf = require('rdf-ext')
+const SparqlStore = require('../')
+
+describe('rdf-store-sparql', () => {
+  const simpleDataset = rdf.dataset([
+    rdf.quad(
+      rdf.namedNode('http://example.org/subject'),
+      rdf.namedNode('http://example.org/predicate'),
+      rdf.literal('object'),
+      rdf.namedNode('http://example.org/graph')
+    )
   ])
-  var simpleGraphNT = '<http://example.org/subject> <http://example.org/predicate> "object".'
 
-  describe('constructor', function () {
-    it('should throw an error if no options are given', function (done) {
-      Promise.resolve().then(function () {
-        var store = new SparqlStore()
+  const simpleGraph = rdf.graph(simpleDataset)
 
-        assert(store)
+  const simpleGraphNT = '<http://example.org/subject> <http://example.org/predicate> "object".'
 
-        done('no error thrown')
-      }).catch(function () {
-        done()
+  function expectError (p) {
+    return new Promise((resolve, reject) => {
+      Promise.resolve().then(() => {
+        return p()
+      }).then(() => {
+        reject(new Error('no error thrown'))
+      }).catch(() => {
+        resolve()
+      })
+    })
+  }
+
+  describe('constructor', () => {
+    it('should throw an error if no options are given', () => {
+      return expectError(() => {
+        let store = new SparqlStore()
+
+        assert(!store)
       })
     })
 
-    it('should throw an error if no endpointUrl is given', function (done) {
-      Promise.resolve().then(function () {
-        var store = new SparqlStore({})
+    it('should throw an error if no endpointUrl is given', () => {
+      return expectError(() => {
+        let store = new SparqlStore({})
 
-        assert(store)
-
-        done('no error thrown')
-      }).catch(function () {
-        done()
+        assert(!store)
       })
     })
   })
 
-  describe('.add', function () {
-    var query = 'DROP SILENT GRAPH<http://example.org/graph>;INSERT DATA{GRAPH<http://example.org/graph>{<http://example.org/subject> <http://example.org/predicate> "object" .\n}}'
+  describe('.construct', () => {
+    const query = 'DESCRIBE<http://example.org/graph>'
 
-    it('should use DROP SILENT and INSERT DATA query and support callback interface', function (done) {
-      var sentData
-
+    it('should forward the query and stream the result', () => {
       nock('http://example.org')
-        .post('/update')
-        .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(7))
-        })
+        .get('/sparql?query=' + encodeURIComponent(query))
+        .reply(200, simpleGraphNT, {'Content-Type': 'text/turtle'})
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
+      let store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
 
-      store.add('http://example.org/graph', simpleGraph, function (error, graph) {
-        Promise.resolve().then(function () {
-          assert(!error)
-          assert.equal(sentData, query)
-          assert(simpleGraph.equals(graph))
+      let graph = rdf.graph()
+      let stream = store.construct(query)
 
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should handle error with callback interface', function (done) {
-      nock('http://example.org')
-        .post('/update')
-        .reply(500)
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.add('http://example.org/graph', simpleGraph, function (error) {
-        Promise.resolve().then(function () {
-          assert(error)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should use DROP SILENT and INSERT DATA query and support Promise interface', function (done) {
-      var sentData
-
-      nock('http://example.org')
-        .post('/update')
-        .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(7))
-        })
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.add('http://example.org/graph', simpleGraph).then(function (graph) {
-        assert.equal(sentData, query)
+      return graph.import(stream).then(() => {
         assert(simpleGraph.equals(graph))
-
-        done()
-      }).catch(function (error) {
-        done(error)
       })
     })
 
-    it('should handle error with Promise interface', function (done) {
+    it('should handle errors', () => {
       nock('http://example.org')
-        .post('/update')
+        .get('/sparql?query=' + encodeURIComponent(query))
         .reply(500)
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
+      let store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
 
-      store.add('http://example.org/graph', simpleGraph).then(function () {
-        done('no error throw')
-      }).catch(function () {
-        done()
+      return expectError(() => {
+        return rdf.dataset().import(store.construct(query))
       })
     })
   })
 
-  describe('.delete', function () {
-    var query = 'CLEAR GRAPH<http://example.org/graph>'
+  describe('.update', () => {
+    const query = 'MOVE DEFAULT TO <http://example.org/graph>'
 
-    it('should use CLEAR GRAPH query and support callback interface', function (done) {
-      var sentData
+    it('should forward the query', () => {
+      let sentData
 
       nock('http://example.org')
         .post('/update')
-        .reply(201, function (url, body) {
+        .reply(204, (url, body) => {
           sentData = decodeURIComponent(body.slice(7))
         })
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.delete('http://example.org/graph', function (error) {
-        Promise.resolve().then(function () {
-          assert(!error)
-          assert.equal(sentData, query)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
       })
-    })
 
-    it('should handle error with callback interface', function (done) {
-      nock('http://example.org')
-        .post('/update')
-        .reply(500)
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.delete('http://example.org/graph', function (error) {
-        Promise.resolve().then(function () {
-          assert(error)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should use CLEAR GRAPH query and support Promise interface', function (done) {
-      var sentData
-
-      nock('http://example.org')
-        .post('/update')
-        .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(7))
-        })
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.delete('http://example.org/graph').then(function () {
+      return rdf.waitFor(store.update(query)).then(() => {
         assert.equal(sentData, query)
-
-        done()
-      }).catch(function (error) {
-        done(error)
       })
     })
 
-    it('should handle error with Promise interface', function (done) {
+    it('should handle errors', () => {
       nock('http://example.org')
         .post('/update')
         .reply(500)
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
+      })
 
-      store.delete('http://example.org/graph').then(function () {
-        done('no error throw')
-      }).catch(function () {
-        done()
+      return expectError(() => {
+        return rdf.waitFor(store.update(query))
       })
     })
   })
 
-  describe('.graph', function () {
-    var query = 'CONSTRUCT{?s?p?o}{GRAPH<http://example.org/graph>{?s?p?o}}'
+  describe('.match', () => {
+    const query = 'CONSTRUCT{?s?p?o}{GRAPH?g{?s?p?o}}'
 
-    it('should use CONSTRUCT query and support callback interface', function (done) {
+    it('should use CONSTRUCT query and stream the result', () => {
       nock('http://example.org')
         .get('/sparql?query=' + encodeURIComponent(query))
-        .reply(200, simpleGraphNT, {'Content-Type': 'application/n-triples'})
+        .reply(200, simpleGraphNT, {'Content-Type': 'text/turtle'})
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
+      let store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
 
-      store.graph('http://example.org/graph', function (error, graph) {
-        Promise.resolve().then(function () {
-          assert(!error)
-          assert(simpleGraph.equals(graph))
+      let graph = rdf.graph()
+      let stream = store.match()
 
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should handle error with callback interface', function (done) {
-      nock('http://example.org')
-        .get('/sparql?query=' + encodeURIComponent(query))
-        .reply(500)
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
-
-      store.graph('http://example.org/graph', function (error) {
-        Promise.resolve().then(function () {
-          assert(error)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should use CONSTRUCT query and support Promise interface', function (done) {
-      nock('http://example.org')
-        .get('/sparql?query=' + encodeURIComponent(query))
-        .reply(200, simpleGraphNT, {'Content-Type': 'application/n-triples'})
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
-
-      store.graph('http://example.org/graph').then(function (graph) {
+      return graph.import(stream).then(() => {
         assert(simpleGraph.equals(graph))
-
-        done()
-      }).catch(function (error) {
-        done(error)
       })
     })
 
-    it('should handle error with Promise interface', function (done) {
+    it('should use CONSTRUCT query with filter and stream the result', () => {
+      const query = 'CONSTRUCT{<http://example.org/subject><http://example.org/predicate>?o}{GRAPH<http://example.org/graph>{<http://example.org/subject><http://example.org/predicate>?o}}'
+
+      nock('http://example.org')
+        .get('/sparql?query=' + encodeURIComponent(query))
+        .reply(200, simpleGraphNT, {'Content-Type': 'text/turtle'})
+
+      let store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
+
+      let stream = store.match(
+        rdf.namedNode('http://example.org/subject'),
+        rdf.namedNode('http://example.org/predicate'),
+        null,
+        rdf.namedNode('http://example.org/graph')
+      )
+
+      return rdf.dataset().import(stream).then((dataset) => {
+        assert(simpleDataset.equals(dataset))
+      })
+    })
+
+    it('should use CONSTRUCT query with filter in default graph and stream the result', () => {
+      const query = 'CONSTRUCT{<http://example.org/subject><http://example.org/predicate>?o}{{<http://example.org/subject><http://example.org/predicate>?o}}'
+
+      nock('http://example.org')
+        .get('/sparql?query=' + encodeURIComponent(query))
+        .reply(200, simpleGraphNT, {'Content-Type': 'text/turtle'})
+
+      let store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
+
+      let stream = store.match(
+        rdf.namedNode('http://example.org/subject'),
+        rdf.namedNode('http://example.org/predicate'),
+        null,
+        rdf.defaultGraph()
+      )
+
+      return rdf.dataset().import(stream).then((dataset) => {
+        assert(simpleGraph.equals(dataset))
+      })
+    })
+
+    it('should handle errors', () => {
       nock('http://example.org')
         .get('/sparql?query=' + encodeURIComponent(query))
         .reply(500)
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
+      let store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
 
-      store.graph('http://example.org/graph').then(function () {
-        done('no error throw')
-      }).catch(function () {
-        done()
+      return expectError(() => {
+        return rdf.dataset().import(store.match())
       })
     })
   })
 
-  describe('.match', function () {
-    var query = 'CONSTRUCT{<http://example.org/subject><http://example.org/predicate>?o}{GRAPH<http://example.org/graph>{<http://example.org/subject><http://example.org/predicate>?o}}'
+  describe('.import', () => {
+    const query = 'INSERT DATA{GRAPH<http://example.org/graph>{<http://example.org/subject> <http://example.org/predicate> "object" .\n}}'
 
-    it('should use CONSTRUCT query and support callback interface', function (done) {
-      nock('http://example.org')
-        .get('/sparql?query=' + encodeURIComponent(query))
-        .reply(200, simpleGraphNT, {'Content-Type': 'application/n-triples'})
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
-
-      store.match('http://example.org/subject', 'http://example.org/predicate', null, 'http://example.org/graph', function (error, graph) {
-        Promise.resolve().then(function () {
-          assert(!error)
-          assert(simpleGraph.equals(graph))
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should handle error with callback interface', function (done) {
-      nock('http://example.org')
-        .get('/sparql?query=' + encodeURIComponent(query))
-        .reply(500)
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
-
-      store.match('http://example.org/subject', 'http://example.org/predicate', null, 'http://example.org/graph', function (error) {
-        Promise.resolve().then(function () {
-          assert(error)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should use CONSTRUCT query and support Promise interface', function (done) {
-      nock('http://example.org')
-        .get('/sparql?query=' + encodeURIComponent(query))
-        .reply(200, simpleGraphNT, {'Content-Type': 'application/n-triples'})
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
-
-      store.match('http://example.org/subject', 'http://example.org/predicate', null, 'http://example.org/graph').then(function (graph) {
-        assert(simpleGraph.equals(graph))
-
-        done()
-      }).catch(function (error) {
-        done(error)
-      })
-    })
-
-    it('should handle error with Promise interface', function (done) {
-      nock('http://example.org')
-        .get('/sparql?query=' + encodeURIComponent(query))
-        .reply(500)
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql'})
-
-      store.match('http://example.org/subject', 'http://example.org/predicate', null, 'http://example.org/graph').then(function () {
-        done('no error throw')
-      }).catch(function () {
-        done()
-      })
-    })
-  })
-
-  describe('.merge', function () {
-    var query = 'INSERT DATA{GRAPH<http://example.org/graph>{<http://example.org/subject> <http://example.org/predicate> "object" .\n}}'
-
-    it('should use INSERT DATA query and support callback interface', function (done) {
-      var sentData
+    it('should use INSERT DATA query', () => {
+      let sentData
 
       nock('http://example.org')
         .post('/update')
-        .reply(201, function (url, body) {
+        .reply(201, (url, body) => {
           sentData = decodeURIComponent(body.slice(7))
         })
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.merge('http://example.org/graph', simpleGraph, function (error, graph) {
-        Promise.resolve().then(function () {
-          assert(!error)
-          assert.equal(sentData, query)
-          assert(simpleGraph.equals(graph))
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
       })
-    })
 
-    it('should handle error with callback interface', function (done) {
-      nock('http://example.org')
-        .post('/update')
-        .reply(500)
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.merge('http://example.org/graph', simpleGraph, function (error) {
-        Promise.resolve().then(function () {
-          assert(error)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should use INSERT DATA query and support Promise interface', function (done) {
-      var sentData
-
-      nock('http://example.org')
-        .post('/update')
-        .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(7))
-        })
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.merge('http://example.org/graph', simpleGraph).then(function (graph) {
+      return rdf.waitFor(store.import(simpleDataset.toStream())).then(() => {
         assert.equal(sentData, query)
-        assert(simpleGraph.equals(graph))
-
-        done()
-      }).catch(function (error) {
-        done(error)
       })
     })
 
-    it('should handle error with Promise interface', function (done) {
+    it('should handle errors', () => {
       nock('http://example.org')
         .post('/update')
         .reply(500)
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
+      })
 
-      store.merge('http://example.org/graph', simpleGraph).then(function () {
-        done('no error throw')
-      }).catch(function () {
-        done()
+      return expectError(() => {
+        return rdf.waitFor(store.import(simpleDataset.toStream()))
       })
     })
   })
 
-  describe('.remove', function () {
-    var query = 'DELETE DATA FROM<http://example.org/graph>{<http://example.org/subject> <http://example.org/predicate> "object" .\n}'
+  describe('.import with truncate', () => {
+    const query = 'DROP SILENT GRAPH<http://example.org/graph>;INSERT DATA{GRAPH<http://example.org/graph>{<http://example.org/subject> <http://example.org/predicate> "object" .\n}}'
 
-    it('should use DELETE DATA FROM query and support callback interface', function (done) {
-      var sentData
+    it('should use DROP SILENT and INSERT DATA query', () => {
+      let sentData
 
       nock('http://example.org')
         .post('/update')
-        .reply(201, function (url, body) {
+        .reply(201, (url, body) => {
           sentData = decodeURIComponent(body.slice(7))
         })
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.remove('http://example.org/graph', simpleGraph, function (error) {
-        Promise.resolve().then(function () {
-          assert(!error)
-          assert.equal(sentData, query)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
       })
-    })
 
-    it('should handle error with callback interface', function (done) {
-      nock('http://example.org')
-        .post('/update')
-        .reply(500)
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.remove('http://example.org/graph', simpleGraph, function (error) {
-        Promise.resolve().then(function () {
-          assert(error)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should use DELETE DATA FROM query and support Promise interface', function (done) {
-      var sentData
-
-      nock('http://example.org')
-        .post('/update')
-        .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(7))
-        })
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.remove('http://example.org/graph', simpleGraph).then(function () {
+      return rdf.waitFor(store.import(simpleDataset.toStream(), {truncate: true})).then(() => {
         assert.equal(sentData, query)
-
-        done()
-      }).catch(function (error) {
-        done(error)
       })
     })
 
-    it('should handle error with Promise interface', function (done) {
+    it('should handle errors', () => {
       nock('http://example.org')
         .post('/update')
         .reply(500)
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
+      })
 
-      store.remove('http://example.org/graph', simpleGraph).then(function () {
-        done('no error throw')
-      }).catch(function () {
-        done()
+      return expectError(() => {
+        return rdf.waitFor(store.import(simpleDataset.toStream(), {truncate: true}))
       })
     })
   })
 
-  describe('.removeMatches', function () {
-    var query = 'DELETE FROM GRAPH<http://example.org/graph>WHERE{<http://example.org/subject><http://example.org/predicate>?o}'
+  describe('.remove', () => {
+    const query = 'DELETE DATA FROM<http://example.org/graph>{<http://example.org/subject> <http://example.org/predicate> "object" .\n}'
 
-    it('should use DELETE FROM GRAPH query and support callback interface', function (done) {
-      var sentData
+    it('should use DELETE DATA FROM query', () => {
+      let sentData
 
       nock('http://example.org')
         .post('/update')
-        .reply(201, function (url, body) {
+        .reply(201, (url, body) => {
           sentData = decodeURIComponent(body.slice(7))
         })
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.removeMatches('http://example.org/subject', 'http://example.org/predicate', null, 'http://example.org/graph', function (error) {
-        Promise.resolve().then(function () {
-          assert(!error)
-          assert.equal(sentData, query)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
       })
-    })
 
-    it('should handle error with callback interface', function (done) {
-      nock('http://example.org')
-        .post('/update')
-        .reply(500)
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.removeMatches('http://example.org/subject', 'http://example.org/predicate', null, 'http://example.org/graph', function (error) {
-        Promise.resolve().then(function () {
-          assert(error)
-
-          done()
-        }).catch(function (error) {
-          done(error)
-        })
-      })
-    })
-
-    it('should use DELETE FROM GRAPH query and support Promise interface', function (done) {
-      var sentData
-
-      nock('http://example.org')
-        .post('/update')
-        .reply(201, function (url, body) {
-          sentData = decodeURIComponent(body.slice(7))
-        })
-
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
-
-      store.removeMatches('http://example.org/subject', 'http://example.org/predicate', null, 'http://example.org/graph').then(function () {
+      return rdf.waitFor(store.remove(simpleDataset.toStream())).then(() => {
         assert.equal(sentData, query)
-
-        done()
-      }).catch(function (error) {
-        done(error)
       })
     })
 
-    it('should handle error with Promise interface', function (done) {
+    it('should handle errors', () => {
       nock('http://example.org')
         .post('/update')
         .reply(500)
 
-      var store = new SparqlStore({endpointUrl: 'http://example.org/sparql', updateUrl: 'http://example.org/update'})
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
+      })
 
-      store.removeMatches('http://example.org/subject', 'http://example.org/predicate', null, 'http://example.org/graph').then(function () {
-        done('no error throw')
-      }).catch(function () {
-        done()
+      return expectError(() => {
+        return rdf.waitFor(store.remove(simpleDataset.toStream()))
+      })
+    })
+  })
+
+  describe('.removeMatches', () => {
+    const query = 'DELETE FROM GRAPH<http://example.org/graph>WHERE{<http://example.org/subject><http://example.org/predicate>?o}'
+
+    it('should use DELETE FROM GRAPH query', () => {
+      let sentData
+
+      nock('http://example.org')
+        .post('/update')
+        .reply(201, (url, body) => {
+          sentData = decodeURIComponent(body.slice(7))
+        })
+
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
+      })
+
+      return rdf.waitFor(store.removeMatches(
+          rdf.namedNode('http://example.org/subject'),
+          rdf.namedNode('http://example.org/predicate'),
+          null,
+          rdf.namedNode('http://example.org/graph')
+      )).then(() => {
+        assert.equal(sentData, query)
+      })
+    })
+
+    it('should handle errors', () => {
+      nock('http://example.org')
+        .post('/update')
+        .reply(500)
+
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
+      })
+
+      return expectError(() => {
+        return rdf.waitFor(store.removeMatches(
+          rdf.namedNode('http://example.org/subject'),
+          rdf.namedNode('http://example.org/predicate'),
+          null,
+          rdf.namedNode('http://example.org/graph')
+        ))
+      })
+    })
+  })
+
+  describe('.deleteGraph', () => {
+    const query = 'CLEAR GRAPH<http://example.org/graph>'
+
+    it('should use CLEAR GRAPH query', () => {
+      let sentData
+
+      nock('http://example.org')
+        .post('/update')
+        .reply(201, (url, body) => {
+          sentData = decodeURIComponent(body.slice(7))
+        })
+
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
+      })
+
+      return rdf.waitFor(store.deleteGraph(rdf.namedNode('http://example.org/graph'))).then(() => {
+        assert.equal(sentData, query)
+      })
+    })
+
+    it('should handle error with callback interface', () => {
+      nock('http://example.org')
+        .post('/update')
+        .reply(500)
+
+      let store = new SparqlStore({
+        endpointUrl: 'http://example.org/sparql',
+        updateUrl: 'http://example.org/update'
+      })
+
+      return expectError(() => {
+        return rdf.waitFor(store.deleteGraph(rdf.namedNode('http://example.org/graph')))
       })
     })
   })
