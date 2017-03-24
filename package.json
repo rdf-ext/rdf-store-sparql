@@ -24,8 +24,8 @@
   },
   "homepage": "https://github.com/rdf-ext/rdf-store-sparql",
   "dependencies": {
-    "nodeify-fetch": "^0.2.0",
     "rdf-ext": "git://github.com/rdf-ext/rdf-ext.git#develop",
+    "rdf-fetch-lite": "git://github.com/rdf-ext/rdf-fetch-lite.git#develop",
     "rdf-parser-n3": "git://github.com/rdf-ext/rdf-parser-n3.git#develop",
     "rdf-serializer-ntriples": "git://github.com/rdf-ext/rdf-serializer-ntriples.git#develop",
     "readable-stream": "^2.2.5",
