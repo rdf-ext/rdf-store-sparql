@@ -28,7 +28,7 @@
     "rdf-fetch-lite": "git://github.com/rdf-ext/rdf-fetch-lite.git#develop",
     "rdf-parser-n3": "git://github.com/rdf-ext/rdf-parser-n3.git#develop",
     "rdf-serializer-ntriples": "git://github.com/rdf-ext/rdf-serializer-ntriples.git#develop",
-    "rdf-source-triple-to-quad": "git://github.com/rdf-ext/rdf-source-triple-to-quad.git#develop",
+    "rdf-transform-triple-to-quad": "git://github.com/rdf-ext/rdf-transform-triple-to-quad.git#develop",
     "sparql-http-client": "^1.0.2"
   },
   "devDependencies": {
