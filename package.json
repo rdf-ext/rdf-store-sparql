@@ -24,7 +24,11 @@
   },
   "homepage": "https://github.com/rdf-ext/rdf-store-sparql",
   "dependencies": {
-    "rdf-ext": "^1.0.0",
+    "@rdfjs/data-model": "^1.1.0",
+    "@rdfjs/to-ntriples": "^1.0.0",
+    "bluebird": "^3.5.2",
+    "promise-queue": "^2.2.5",
+    "rdf-ext": "^1.1.1",
     "rdf-fetch-lite": "^1.0.0",
     "rdf-parser-n3": "^1.0.0",
     "rdf-serializer-ntriples": "^1.0.0",
@@ -32,8 +36,8 @@
     "sparql-http-client": "^1.0.2"
   },
   "devDependencies": {
-    "mocha": "^3.2.0",
+    "mocha": "^5.2.0",
     "nock": "^9.0.9",
-    "standard": "^9.0.1"
+    "standard": "^12.0.1"
   }
 }
