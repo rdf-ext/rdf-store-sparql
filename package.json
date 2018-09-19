@@ -1,6 +1,6 @@
 {
   "name": "rdf-store-sparql",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "SPARQL RDF Store that follows the RDFJS Store interface specification.",
   "main": "index.js",
   "scripts": {
