@@ -1,3 +1,3 @@
-const Store = require('./lib/Store')
+import Store from './lib/Store.js'
 
-module.exports = Store
+export default Store

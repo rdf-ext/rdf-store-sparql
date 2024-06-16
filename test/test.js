@@ -1,213 +1,39 @@
-/* global describe, it */
-
-const assert = require('assert')
-const nock = require('nock')
-const rdf = require('@rdfjs/data-model')
-const rdfExt = require('rdf-ext')
-const url = require('url')
-const SparqlStore = require('../')
-
-function expectError (p) {
-  return new Promise((resolve, reject) => {
-    Promise.resolve().then(() => {
-      return p()
-    }).then(() => {
-      reject(new Error('no error thrown'))
-    }).catch(() => {
-      resolve()
-    })
-  })
-}
-
-function virtualEndpoint ({ method = 'GET', id, statusCode, content, headers = {}, count = 1 } = {}) {
-  const result = {
-    queries: [],
-    touched: false
-  }
-
-  for (let i = 0; i < count; i++) {
-    let request
-
-    if (method === 'GET') {
-      request = nock('http://example.org').get(new RegExp(`${id}.*`))
-    } else if (method === 'POST') {
-      request = nock('http://example.org').post(id)
-    }
-
-    request.reply((uri, body) => {
-      const params = (url.parse(uri).query || body || '').split('&').reduce((params, param) => {
-        const pair = param.split('=')
-
-        params[pair[0]] = decodeURIComponent(pair[1])
-
-        return params
-      }, {})
-
-      result.touched = true
-
-      if (params.query || params.update) {
-        result.queries.push(params.query || params.update)
-      }
-
-      return [statusCode || (content ? 200 : 201), content, headers]
-    })
-  }
-
-  return result
-}
+import { deepStrictEqual, rejects, strictEqual, throws } from 'node:assert'
+import toNT from '@rdfjs/to-ntriples'
+import { describe, it } from 'mocha'
+import rdf from 'rdf-ext'
+import eventToPromise from 'rdf-utils-stream/eventToPromise.js'
+import SparqlStore from '../index.js'
+import * as ns from './support/namespaces.js'
+import virtualEndpoint from './support/virtualEndpoint.js'
 
 const example = {}
 
-example.subject = rdf.namedNode('http://example.org/subject')
-example.subjectNt = `<${example.subject.value}>`
-example.predicate = rdf.namedNode('http://example.org/predicate')
-example.predicateNt = `<${example.predicate.value}>`
-example.object = rdf.literal('object')
-example.objectNt = `"${example.object.value}"`
-example.graph = rdf.namedNode('http://example.org/graph')
-example.graphNt = `<${example.graph.value}>`
-example.dataset = rdfExt.dataset([rdf.quad(example.subject, example.predicate, example.object, example.graph)])
-example.datasetDefaultGraph = rdfExt.graph(example.dataset)
+example.dataset = rdf.dataset([rdf.quad(ns.ex.subject, ns.ex.predicate, ns.ex.object, ns.ex.graph)])
+example.datasetDefaultGraph = rdf.dataset(example.dataset, rdf.defaultGraph())
 
 describe('store-sparql', () => {
   describe('constructor', () => {
     it('should throw an error if no endpointUrl is given', () => {
-      return expectError(() => {
-        const store = new SparqlStore()
-
-        assert(!store)
+      return throws(() => {
+        new SparqlStore({}) // eslint-disable-line no-new
       })
     })
 
     it('should use the given endpointUrl in the SPARQL client instance', () => {
       const endpointUrl = 'http://example.org/sparql'
 
-      const store = new SparqlStore(endpointUrl)
+      const store = new SparqlStore({ endpointUrl })
 
-      assert.strictEqual(store.client.endpointUrl, endpointUrl)
+      strictEqual(store.client.endpointUrl, endpointUrl)
     })
 
     it('should use endpointUrl as updateUrl if updateUrl is not given', () => {
       const endpointUrl = 'http://example.org/sparql'
 
-      const store = new SparqlStore(endpointUrl)
+      const store = new SparqlStore({ endpointUrl })
 
-      assert.strictEqual(store.client.updateUrl, endpointUrl)
-    })
-  })
-
-  describe('.construct', () => {
-    it('should use the endpoint URL', () => {
-      const id = '/construct/url'
-      const query = `DESCRIBE${example.graphNt}`
-
-      const result = virtualEndpoint({
-        id,
-        content: example.datasetDefaultGraph.toCanonical(),
-        headers: { 'Content-Type': 'text/turtle' }
-      })
-
-      const store = new SparqlStore(`http://example.org${id}`, { updateUrl: `http://example.org${id}/update` })
-      const stream = store.construct(query)
-
-      return rdfExt.dataset().import(stream).then(() => {
-        assert(result.touched)
-      })
-    })
-
-    it('should forward the query', () => {
-      const id = '/construct/send'
-      const query = `DESCRIBE${example.graphNt}`
-
-      const result = virtualEndpoint({
-        id,
-        content: example.datasetDefaultGraph.toCanonical(),
-        headers: { 'Content-Type': 'text/turtle' }
-      })
-
-      const store = new SparqlStore(`http://example.org${id}`)
-      const stream = store.construct(query)
-
-      return rdfExt.dataset().import(stream).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
-    })
-
-    it('should stream the result', () => {
-      const id = '/construct/stream'
-      const query = `DESCRIBE${example.graphNt}`
-
-      virtualEndpoint({
-        id,
-        content: example.datasetDefaultGraph.toCanonical(),
-        headers: { 'Content-Type': 'text/turtle' }
-      })
-
-      const store = new SparqlStore(`http://example.org${id}`)
-      const stream = store.construct(query)
-
-      return rdfExt.dataset().import(stream).then(dataset => {
-        assert(example.datasetDefaultGraph.toCanonical(), dataset.toCanonical())
-      })
-    })
-
-    it('should handle errors', () => {
-      const id = '/construct/error'
-      const query = 'not a valid SPARQL query'
-
-      virtualEndpoint({
-        id,
-        statusCode: 500
-      })
-
-      const store = new SparqlStore(`http://example.org${id}`)
-      const stream = store.construct(query)
-
-      return expectError(() => rdfExt.dataset().import(stream))
-    })
-  })
-
-  describe('.update', () => {
-    it('should use the update URL', () => {
-      const id = '/update/url'
-      const query = `MOVE DEFAULT TO ${example.graphNt}`
-
-      const result = virtualEndpoint({ method: 'POST', id })
-
-      const store = new SparqlStore(`http://example.org${id}/sparql`, { updateUrl: `http://example.org${id}` })
-      const event = store.update(query)
-
-      return rdfExt.waitFor(event).then(() => {
-        assert(result.touched)
-      })
-    })
-
-    it('should forward the query', () => {
-      const id = '/update/send'
-      const query = `MOVE DEFAULT TO ${example.graphNt}`
-
-      const result = virtualEndpoint({ method: 'POST', id })
-
-      const store = new SparqlStore(`http://example.org${id}`)
-      const event = store.update(query)
-
-      return rdfExt.waitFor(event).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
-    })
-
-    it('should handle errors', () => {
-      const id = '/update/error'
-      const query = 'not a valid SPARQL query'
-
-      nock('http://example.org')
-        .post(id)
-        .reply(500)
-
-      const store = new SparqlStore(`http://example.org/sparql${id}`)
-      const event = store.update(query)
-
-      return expectError(() => rdfExt.waitFor(event))
+      strictEqual(store.client.updateUrl, endpointUrl)
     })
   })
 
@@ -215,17 +41,16 @@ describe('store-sparql', () => {
     it('should use the endpoint URL', () => {
       const id = '/match/url'
 
-      const result = virtualEndpoint({
+      const { result, store } = virtualEndpoint({
         id,
         content: example.datasetDefaultGraph.toCanonical(),
         headers: { 'Content-Type': 'text/turtle' }
       })
 
-      const store = new SparqlStore(`http://example.org${id}`, { updateUrl: `http://example.org${id}/update` })
       const stream = store.match()
 
-      return rdfExt.dataset().import(stream).then(() => {
-        assert(result.touched)
+      return rdf.dataset().import(stream).then(() => {
+        strictEqual(result.touched, true)
       })
     })
 
@@ -233,453 +58,412 @@ describe('store-sparql', () => {
       const id = '/match/construct'
       const query = 'CONSTRUCT{?s?p?o}{GRAPH?g{?s?p?o}}'
 
-      const result = virtualEndpoint({
+      const { result, store } = virtualEndpoint({
         id,
         content: example.datasetDefaultGraph.toCanonical(),
         headers: { 'Content-Type': 'text/turtle' }
       })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.match()
 
-      return rdfExt.dataset().import(stream).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
+      return rdf.dataset().import(stream).then(() => {
+        deepStrictEqual(result.queries, [query])
       })
     })
 
     it('should stream the result', () => {
       const id = '/match/stream'
 
-      virtualEndpoint({
+      const { store } = virtualEndpoint({
         id,
         content: example.datasetDefaultGraph.toCanonical(),
         headers: { 'Content-Type': 'text/turtle' }
       })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.match()
 
-      return rdfExt.dataset().import(stream).then(dataset => {
-        assert.strictEqual(example.datasetDefaultGraph.toCanonical(), dataset.toCanonical())
+      return rdf.dataset().import(stream).then(dataset => {
+        strictEqual(example.datasetDefaultGraph.toCanonical(), dataset.toCanonical())
       })
     })
 
-    it('should support filters', () => {
+    it('should support filters', async () => {
       const id = '/match/construct-filter'
-      const query = `CONSTRUCT{${example.subjectNt}${example.predicateNt}?o}{GRAPH${example.graphNt}{${example.subjectNt}${example.predicateNt}?o}}`
+      const query = `CONSTRUCT{${toNT(ns.ex.subject)}${toNT(ns.ex.predicate)}?o}{GRAPH${toNT(ns.ex.graph)}{${toNT(ns.ex.subject)}${toNT(ns.ex.predicate)}?o}}`
 
-      const result = virtualEndpoint({
+      const { result, store } = virtualEndpoint({
         id,
         content: example.datasetDefaultGraph.toCanonical(),
         headers: { 'Content-Type': 'text/turtle' }
       })
 
-      const store = new SparqlStore(`http://example.org${id}`)
-      const stream = store.match(example.subject, example.predicate, null, example.graph)
+      const stream = store.match(ns.ex.subject, ns.ex.predicate, null, ns.ex.graph)
+      await rdf.dataset().import(stream)
 
-      return rdfExt.dataset().import(stream).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should should support Default Graph filter', () => {
+    it('should should support Default Graph filter', async () => {
       const id = '/match/construct-filter-default'
-      const query = `CONSTRUCT{${example.subjectNt}${example.predicateNt}?o}{${example.subjectNt}${example.predicateNt}?o}`
+      const query = `CONSTRUCT{${toNT(ns.ex.subject)}${toNT(ns.ex.predicate)}?o}{${toNT(ns.ex.subject)}${toNT(ns.ex.predicate)}?o}`
 
-      const result = virtualEndpoint({
+      const { result, store } = virtualEndpoint({
         id,
         content: example.datasetDefaultGraph.toCanonical(),
         headers: { 'Content-Type': 'text/turtle' }
       })
 
-      const store = new SparqlStore(`http://example.org${id}`)
-      const stream = store.match(example.subject, example.predicate, null, rdf.defaultGraph())
+      const stream = store.match(ns.ex.subject, ns.ex.predicate, null, rdf.defaultGraph())
+      await rdf.dataset().import(stream)
 
-      return rdfExt.dataset().import(stream).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should handle errors', () => {
+    it('should handle errors', async () => {
       const id = '/match/error'
 
-      virtualEndpoint({
+      const { store } = virtualEndpoint({
         id,
         statusCode: 500
       })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.match()
 
-      return expectError(() => rdfExt.dataset().import(stream))
+      await rejects(() => rdf.dataset().import(stream))
     })
   })
 
   describe('.import', () => {
-    it('should use update URL', () => {
+    it('should use update URL', async () => {
       const id = '/import/url'
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}/sparql`, { updateUrl: `http://example.org${id}` })
       const stream = store.import(example.dataset.toStream())
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert(result.touched)
-      })
+      strictEqual(result.touched, true)
     })
 
-    it('should use INSERT DATA { GRAPH <...> {...} } query', () => {
+    it('should use INSERT DATA { GRAPH <...> {...} } query', async () => {
       const id = '/import/insert'
-      const query = `INSERT DATA{GRAPH${example.graphNt}{${example.subjectNt} ${example.predicateNt} ${example.objectNt} .}}`
+      const query = `INSERT DATA{GRAPH${toNT(ns.ex.graph)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} ${toNT(ns.ex.object)} .}}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.import(example.dataset.toStream())
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should use INSERT DATA { ... } query for Default Graph', () => {
+    it('should use INSERT DATA { ... } query for Default Graph', async () => {
       const id = '/import/insert-default-graph'
-      const query = `INSERT DATA{${example.subjectNt} ${example.predicateNt} ${example.objectNt} .}`
+      const query = `INSERT DATA{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} ${toNT(ns.ex.object)} .}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.import(example.datasetDefaultGraph.toStream())
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should split queries if content is to long', () => {
+    it('should split queries if content is to long', async () => {
       const id = '/import/split-length'
       const queries = [
-        `INSERT DATA{GRAPH${example.graphNt}{${example.subjectNt} ${example.predicateNt} "object1" .}}`,
-        `INSERT DATA{GRAPH${example.graphNt}{${example.subjectNt} ${example.predicateNt} "object2" .}}`
+        `INSERT DATA{GRAPH${toNT(ns.ex.graph)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} "object1" .}}`,
+        `INSERT DATA{GRAPH${toNT(ns.ex.graph)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} "object2" .}}`
       ]
 
-      const exampleDataset = rdfExt.dataset([
-        rdf.quad(example.subject, example.predicate, rdf.literal('object1'), example.graph),
-        rdf.quad(example.subject, example.predicate, rdf.literal('object2'), example.graph)
+      const exampleDataset = rdf.dataset([
+        rdf.quad(ns.ex.subject, ns.ex.predicate, rdf.literal('object1'), ns.ex.graph),
+        rdf.quad(ns.ex.subject, ns.ex.predicate, rdf.literal('object2'), ns.ex.graph)
       ])
 
-      const result = virtualEndpoint({ method: 'POST', id, count: 2 })
-
-      const store = new SparqlStore(`http://example.org${id}`, { maxQueryLength: 120 })
-      const stream = store.import(exampleDataset.toStream())
-
-      return rdfExt.waitFor(stream).then(() => {
-        assert.deepStrictEqual(result.queries, queries)
+      const { result, store } = virtualEndpoint({
+        count: 2,
+        id,
+        maxQueryLength: 120,
+        method: 'POST'
       })
+
+      const stream = store.import(exampleDataset.toStream())
+      await eventToPromise(stream)
+
+      deepStrictEqual(result.queries, queries)
     })
 
-    it('should split queries on new graph', () => {
+    it('should split queries on new graph', async () => {
       const id = '/import/split-graph'
       const queries = [
-        `INSERT DATA{GRAPH<http://example.org/graph1>{${example.subjectNt} ${example.predicateNt} ${example.objectNt} .}}`,
-        `INSERT DATA{GRAPH<http://example.org/graph2>{${example.subjectNt} ${example.predicateNt} ${example.objectNt} .}}`
+        `INSERT DATA{GRAPH${toNT(ns.ex.graph1)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} ${toNT(ns.ex.object)} .}}`,
+        `INSERT DATA{GRAPH${toNT(ns.ex.graph2)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} ${toNT(ns.ex.object)} .}}`
       ]
 
-      const exampleDataset = rdfExt.dataset([
-        rdf.quad(example.subject, example.predicate, example.object, rdf.namedNode('http://example.org/graph1')),
-        rdf.quad(example.subject, example.predicate, example.object, rdf.namedNode('http://example.org/graph2'))
+      const exampleDataset = rdf.dataset([
+        rdf.quad(ns.ex.subject, ns.ex.predicate, ns.ex.object, ns.ex.graph1),
+        rdf.quad(ns.ex.subject, ns.ex.predicate, ns.ex.object, ns.ex.graph2)
       ])
 
-      const result = virtualEndpoint({ method: 'POST', id, count: 2 })
+      const { result, store } = virtualEndpoint({ method: 'POST', id, count: 2 })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.import(exampleDataset.toStream())
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert.deepStrictEqual(result.queries, queries)
-      })
+      deepStrictEqual(result.queries, queries)
     })
 
-    it('should handle errors', () => {
+    it('should handle errors', async () => {
       const id = '/import/error'
 
-      nock('http://example.org')
-        .post(id)
-        .reply(500)
+      const { store } = virtualEndpoint({ id, method: 'POST', statusCode: 500 })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.import(example.dataset.toStream())
 
-      return expectError(() => rdfExt.waitFor(stream))
+      await rejects(() => eventToPromise(stream))
     })
   })
 
   describe('.remove', () => {
-    it('should use update URL', () => {
+    it('should use update URL', async () => {
       const id = '/remove/url'
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}/sparql`, { updateUrl: `http://example.org${id}` })
       const stream = store.remove(example.dataset.toStream())
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert(result.touched)
-      })
+      strictEqual(result.touched, true)
     })
 
-    it('should use DELETE DATA {GRAPH<...>} query', () => {
+    it('should use DELETE DATA {GRAPH<...>} query', async () => {
       const id = '/remove/delete'
-      const query = `DELETE DATA{GRAPH${example.graphNt}{${example.subjectNt} ${example.predicateNt} ${example.objectNt} .}}`
+      const query = `DELETE DATA{GRAPH${toNT(ns.ex.graph)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} ${toNT(ns.ex.object)} .}}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.remove(example.dataset.toStream())
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should use DELETE DATA {} query for Default Graph', () => {
+    it('should use DELETE DATA {} query for Default Graph', async () => {
       const id = '/remove/delete-default-graph'
-      const query = `DELETE DATA{${example.subjectNt} ${example.predicateNt} ${example.objectNt} .}`
+      const query = `DELETE DATA{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} ${toNT(ns.ex.object)} .}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.remove(example.datasetDefaultGraph.toStream())
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should split queries if content is to long', () => {
+    it('should split queries if content is to long', async () => {
       const id = '/remove/split-length'
       const queries = [
-        `DELETE DATA{GRAPH${example.graphNt}{${example.subjectNt} ${example.predicateNt} "object1" .}}`,
-        `DELETE DATA{GRAPH${example.graphNt}{${example.subjectNt} ${example.predicateNt} "object2" .}}`
+        `DELETE DATA{GRAPH${toNT(ns.ex.graph)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} "object1" .}}`,
+        `DELETE DATA{GRAPH${toNT(ns.ex.graph)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} "object2" .}}`
       ]
 
-      const exampleDataset = rdfExt.dataset([
-        rdf.quad(example.subject, example.predicate, rdf.literal('object1'), example.graph),
-        rdf.quad(example.subject, example.predicate, rdf.literal('object2'), example.graph)
+      const exampleDataset = rdf.dataset([
+        rdf.quad(ns.ex.subject, ns.ex.predicate, rdf.literal('object1'), ns.ex.graph),
+        rdf.quad(ns.ex.subject, ns.ex.predicate, rdf.literal('object2'), ns.ex.graph)
       ])
 
-      const result = virtualEndpoint({ method: 'POST', id, count: 2 })
-
-      const store = new SparqlStore(`http://example.org${id}`, { maxQueryLength: 120 })
-      const stream = store.remove(exampleDataset.toStream())
-
-      return rdfExt.waitFor(stream).then(() => {
-        assert.deepStrictEqual(result.queries, queries)
+      const { result, store } = virtualEndpoint({
+        count: 2,
+        id,
+        maxQueryLength: 120,
+        method: 'POST'
       })
+
+      const stream = store.remove(exampleDataset.toStream())
+      await eventToPromise(stream)
+
+      deepStrictEqual(result.queries, queries)
     })
 
-    it('should split queries on new graph', () => {
+    it('should split queries on new graph', async () => {
       const id = '/remove/split-graph'
       const queries = [
-        `DELETE DATA{GRAPH<http://example.org/graph1>{${example.subjectNt} ${example.predicateNt} ${example.objectNt} .}}`,
-        `DELETE DATA{GRAPH<http://example.org/graph2>{${example.subjectNt} ${example.predicateNt} ${example.objectNt} .}}`
+        `DELETE DATA{GRAPH${toNT(ns.ex.graph1)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} ${toNT(ns.ex.object)} .}}`,
+        `DELETE DATA{GRAPH${toNT(ns.ex.graph2)}{${toNT(ns.ex.subject)} ${toNT(ns.ex.predicate)} ${toNT(ns.ex.object)} .}}`
       ]
 
-      const exampleDataset = rdfExt.dataset([
-        rdf.quad(example.subject, example.predicate, example.object, rdf.namedNode('http://example.org/graph1')),
-        rdf.quad(example.subject, example.predicate, example.object, rdf.namedNode('http://example.org/graph2'))
+      const exampleDataset = rdf.dataset([
+        rdf.quad(ns.ex.subject, ns.ex.predicate, ns.ex.object, ns.ex.graph1),
+        rdf.quad(ns.ex.subject, ns.ex.predicate, ns.ex.object, ns.ex.graph2)
       ])
 
-      const result = virtualEndpoint({ method: 'POST', id, count: 2 })
+      const { result, store } = virtualEndpoint({ method: 'POST', id, count: 2 })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.remove(exampleDataset.toStream())
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert.deepStrictEqual(result.queries, queries)
-      })
+      deepStrictEqual(result.queries, queries)
     })
 
-    it('should handle errors', () => {
+    it('should handle errors', async () => {
       const id = '/remove/error'
 
-      nock('http://example.org')
-        .post(id)
-        .reply(500)
+      const { store } = virtualEndpoint({ id, method: 'POST', statusCode: 500 })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const stream = store.remove(example.dataset.toStream())
 
-      return expectError(() => rdfExt.waitFor(stream))
+      await rejects(() => eventToPromise(stream))
     })
   })
 
   describe('.removeMatches', () => {
-    it('should use update URL', () => {
+    it('should use update URL', async () => {
       const id = '/remove-matches/url'
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}/sparql`, { updateUrl: `http://example.org${id}` })
       const stream = store.removeMatches()
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert(result.touched)
-      })
+      strictEqual(result.touched, true)
     })
 
-    it('should use DELETE WHERE {GRAPH?g{...}} query', () => {
+    it('should use DELETE WHERE {GRAPH?g{...}} query', async () => {
       const id = '/remove-matches/delete-where'
       const query = 'DELETE WHERE{GRAPH?g{?s?p?o}}'
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const event = store.removeMatches()
+      await eventToPromise(event)
 
-      return rdfExt.waitFor(event).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should use DELETE WHERE {GRAPH<...>{...}} query for Named Graph', () => {
+    it('should use DELETE WHERE {GRAPH<...>{...}} query for Named Graph', async () => {
       const id = '/remove-matches/delete-where-graph'
-      const query = `DELETE WHERE{GRAPH${example.graphNt}{${example.subjectNt}?p?o}}`
+      const query = `DELETE WHERE{GRAPH${toNT(ns.ex.graph)}{${toNT(ns.ex.subject)}?p?o}}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
-      const event = store.removeMatches(example.subject, null, null, example.graph)
+      const event = store.removeMatches(ns.ex.subject, null, null, ns.ex.graph)
+      await eventToPromise(event)
 
-      return rdfExt.waitFor(event).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should use DELETE WHERE {...} query for Default Graph', () => {
+    it('should use DELETE WHERE {...} query for Default Graph', async () => {
       const id = '/remove-matches/delete-default-graph'
-      const query = `DELETE WHERE{${example.subjectNt}?p?o}`
+      const query = `DELETE WHERE{${toNT(ns.ex.subject)}?p?o}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
-      const event = store.removeMatches(example.subject, null, null, rdf.defaultGraph())
+      const event = store.removeMatches(ns.ex.subject, null, null, rdf.defaultGraph())
+      await eventToPromise(event)
 
-      return rdfExt.waitFor(event).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should use CLEAR GRAPH <...> query for graph only filter', () => {
+    it('should use CLEAR GRAPH <...> query for graph only filter', async () => {
       const id = '/remove-matches/delete-graph-only'
-      const query = `CLEAR GRAPH${example.graphNt}`
+      const query = `CLEAR GRAPH${toNT(ns.ex.graph)}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
-      const event = store.removeMatches(null, null, null, example.graph)
+      const event = store.removeMatches(null, null, null, ns.ex.graph)
+      await eventToPromise(event)
 
-      return rdfExt.waitFor(event).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should support filters', () => {
+    it('should support filters', async () => {
       const id = '/remove-matches/construct-filter'
-      const query = `DELETE WHERE{GRAPH?g{${example.subjectNt}${example.predicateNt}?o}}`
+      const query = `DELETE WHERE{GRAPH?g{${toNT(ns.ex.subject)}${toNT(ns.ex.predicate)}?o}}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
-      const event = store.removeMatches(example.subject, example.predicate)
+      const event = store.removeMatches(ns.ex.subject, ns.ex.predicate)
+      await eventToPromise(event)
 
-      return rdfExt.waitFor(event).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should handle errors', () => {
+    it('should handle errors', async () => {
       const id = '/remove-matches/error'
 
-      virtualEndpoint({ method: 'POST', id, statusCode: 500 })
+      const { store } = virtualEndpoint({ method: 'POST', id, statusCode: 500 })
 
-      const store = new SparqlStore(`http://example.org/sparql${id}`)
       const event = store.removeMatches()
 
-      return expectError(() => rdfExt.waitFor(event))
+      await rejects(() => eventToPromise(event))
     })
   })
 
   describe('.deleteGraph', () => {
-    it('should use update URL', () => {
+    it('should use update URL', async () => {
       const id = '/delete-graph/url'
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}/sparql`, { updateUrl: `http://example.org${id}` })
-      const stream = store.deleteGraph(example.graph)
+      const stream = store.deleteGraph(ns.ex.graph)
+      await eventToPromise(stream)
 
-      return rdfExt.waitFor(stream).then(() => {
-        assert(result.touched)
-      })
+      strictEqual(result.touched, true)
     })
 
-    it('should use CLEAR GRAPH query', () => {
+    it('should use CLEAR GRAPH query', async () => {
       const id = '/delete-graph/clear-graph'
-      const query = `CLEAR GRAPH${example.graphNt}`
+      const query = `CLEAR GRAPH${toNT(ns.ex.graph)}`
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
-      const event = store.deleteGraph(example.graph)
+      const event = store.deleteGraph(ns.ex.graph)
+      await eventToPromise(event)
 
-      return rdfExt.waitFor(event).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should handle Default Graph', () => {
+    it('should handle Default Graph', async () => {
       const id = '/delete-graph/clear-default-graph'
       const query = 'CLEAR GRAPH DEFAULT'
 
-      const result = virtualEndpoint({ method: 'POST', id })
+      const { result, store } = virtualEndpoint({ method: 'POST', id })
 
-      const store = new SparqlStore(`http://example.org${id}`)
       const event = store.deleteGraph(rdf.defaultGraph())
+      await eventToPromise(event)
 
-      return rdfExt.waitFor(event).then(() => {
-        assert.deepStrictEqual(result.queries, [query])
-      })
+      deepStrictEqual(result.queries, [query])
     })
 
-    it('should throw an error if no term was given', () => {
+    it('should throw an error if no term was given', async () => {
       const id = '/delete-graph/wrong-term-type'
 
-      const store = new SparqlStore(`http://example.org${id}`)
+      const store = new SparqlStore({ endpointUrl: `http://example.org${id}` })
+
       const event = store.deleteGraph()
 
-      return expectError(() => rdfExt.waitFor(event))
+      await rejects(() => eventToPromise(event))
     })
 
-    it('should throw an error on wrong term type', () => {
+    it('should throw an error on wrong term type', async () => {
       const id = '/delete-graph/wrong-term-type'
 
-      const store = new SparqlStore(`http://example.org${id}`)
+      const store = new SparqlStore({ endpointUrl: `http://example.org${id}` })
+
       const event = store.deleteGraph(rdf.blankNode())
 
-      return expectError(() => rdfExt.waitFor(event))
+      await rejects(() => eventToPromise(event))
     })
 
-    it('should handle errors', () => {
+    it('should handle errors', async () => {
       const id = '/delete-graph/error'
 
-      virtualEndpoint({ method: 'POST', id, statusCode: 500 })
+      const { store } = virtualEndpoint({ method: 'POST', id, statusCode: 500 })
 
-      const store = new SparqlStore(`http://example.org/sparql${id}`)
-      const event = store.deleteGraph(example.graph)
+      const event = store.deleteGraph(ns.ex.graph)
 
-      return expectError(() => rdfExt.waitFor(event))
+      await rejects(() => eventToPromise(event))
     })
   })
 })

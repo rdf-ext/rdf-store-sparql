@@ -1,10 +1,11 @@
 {
   "name": "rdf-store-sparql",
   "version": "2.0.0",
-  "description": "SPARQL RDF Store that follows the RDFJS Store interface specification.",
+  "description": "SPARQL RDF Store that follows the RDF/JS Store interface specification",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "standard && mocha"
+    "test": "stricter-standard && c8 --reporter=lcov --reporter=text-summary mocha"
   },
   "repository": {
     "type": "git",
@@ -24,20 +25,18 @@
   },
   "homepage": "https://github.com/rdf-ext/rdf-store-sparql",
   "dependencies": {
-    "@rdfjs/data-model": "^1.1.0",
-    "@rdfjs/to-ntriples": "^1.0.0",
-    "bluebird": "^3.5.2",
+    "@rdfjs/to-ntriples": "^3.0.1",
+    "events": "^3.3.0",
     "promise-queue": "^2.2.5",
-    "rdf-ext": "^1.1.1",
-    "rdf-fetch-lite": "^1.0.0",
-    "rdf-parser-n3": "^1.0.0",
-    "rdf-serializer-ntriples": "^1.0.0",
-    "rdf-transform-triple-to-quad": "^1.0.0",
-    "sparql-http-client": "^1.0.2"
+    "rdf-ext": "^2.5.1",
+    "rdf-transform-triple-to-quad": "^2.0.1",
+    "rdf-utils-stream": "^1.0.0",
+    "sparql-http-client": "^3.0.0"
   },
   "devDependencies": {
-    "mocha": "^5.2.0",
-    "nock": "^9.0.9",
-    "standard": "^12.0.1"
+    "c8": "^10.1.2",
+    "mocha": "^10.4.0",
+    "nock": "^13.5.4",
+    "stricter-standard": "^0.3.1"
   }
 }
