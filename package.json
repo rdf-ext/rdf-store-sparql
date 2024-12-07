@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "c8": "^10.1.2",
-    "mocha": "^10.4.0",
+    "mocha": "^11.0.1",
     "nock": "^13.5.4",
     "stricter-standard": "^0.3.1"
   }
