@@ -1,4 +1,6 @@
 # rdf-store-sparql
+[![build status](https://img.shields.io/github/actions/workflow/status/rdf-ext/rdf-store-sparql/test.yaml?branch=master)](https://github.com/rdf-ext/rdf-store-sparql/actions/workflows/test.yaml)
+[![npm version](https://img.shields.io/npm/v/rdf-store-sparql.svg)](https://www.npmjs.com/package/rdf-store-sparql)
 
 SPARQL RDF Store that follows the [RDF/JS Store interface](http://rdf.js.org/stream-spec/#store-interface) specification.
 This store implementation allows accessing graphs using the [SPARQL 1.1 Protocol](http://www.w3.org/TR/sparql11-protocol/).
